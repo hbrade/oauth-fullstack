@@ -11,7 +11,9 @@ createRoot(document.getElementById("root")).render(
       clientId={import.meta.env.VITE_AUTH0_CLIENT_ID}
       authorizationParams={{
         redirect_uri: `${window.location.origin}/callback`,
+        // usePKCECodeChallenge: false, // ← PKCE deaktivieren
       }}
+      // skipRedirectCallback={true}
     >
       <App />
     </Auth0Provider>

@@ -1,4 +1,3 @@
-// frontend/src/pages/Profile.jsx
 import { useAuth0 } from "@auth0/auth0-react";
 
 export default function ProfilePage() {

@@ -1,4 +1,3 @@
-// frontend/src/pages/Dashboard.jsx
 export default function DashboardPage() {
   return (
     <div style={{ padding: "20px", maxWidth: "600px", margin: "0 auto" }}>
