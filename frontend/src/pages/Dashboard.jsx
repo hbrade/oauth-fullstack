@@ -1,37 +1,41 @@
-export default function DashboardPage() {
+import { useAuth0 } from '@auth0/auth0-react'
+
+export default function Dashboard() {
+  const { user, getAccessTokenSilently, isLoading } = useAuth0()
+
+  if (isLoading) return <p>Laden...</p>
+
+   const handleForceRefresh = async () => {
+    try {
+      console.log('🔄 Force Refresh gestartet...')
+      const token = await getAccessTokenSilently({ cacheMode: 'off' })
+      console.log('✅ Neuer Token:', token.substring(0, 30) + '...')
+    } catch (error) {
+      console.error('❌ Refresh Error:', error)
+    }
+  }
+
   return (
-    <div style={{ padding: "20px", maxWidth: "600px", margin: "0 auto" }}>
-      <h1>📊 Dashboard</h1>
+    <div style={{ padding: '20px' }}>
+      <h1>🎉 Dashboard</h1>
+      <p>
+        <strong>Name:</strong> {user?.name}
+      </p>
+      <p>
+        <strong>Email:</strong> {user?.email}
+      </p>
+      {/* {accessToken && (
+        <p style={{ fontSize: '12px', color: '#666' }}>
+          <strong>Access Token:</strong> {accessToken.substring(0, 30)}...
+        </p>
+      )} */}
 
-      <div
-        style={{
-          marginTop: "20px",
-          padding: "20px",
-          backgroundColor: "#f0f0f0",
-          borderRadius: "8px",
-        }}
+      <button 
+        onClick={handleForceRefresh}
+        style={{ padding: '8px 16px', marginTop: '20px' }}
       >
-        <h2>Du siehst diese Seite, weil du angemeldet bist!</h2>
-        <p>Diese Route ist geschützt mit ProtectedRoute Component.</p>
-        <p>Nicht angemeldete User werden zur Home Page weitergeleitet.</p>
-      </div>
-
-      <div
-        style={{
-          marginTop: "20px",
-          padding: "20px",
-          backgroundColor: "#ffffcc",
-          borderRadius: "8px",
-        }}
-      >
-        <h3>Nächste Schritte (Woche 2):</h3>
-        <ul>
-          <li>Backend API Integration</li>
-          <li>Token Refresh Rotation</li>
-          <li>Daten-Persistierung</li>
-          <li>User-spezifische Inhalte</li>
-        </ul>
-      </div>
+        🔄 Force Token Refresh
+      </button>
     </div>
-  );
+  )
 }

@@ -1,23 +1,22 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useAuth0 } from "@auth0/auth0-react";
-import { AuthButton } from "./components/AuthButton";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-import HomePage from "./pages/Home";
-import DashboardPage from "./pages/Dashboard";
-import ProfilePage from "./pages/Profile";
-import CallbackPage from "./pages/Callback";
-import "./App.css";
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthButton } from './components/AuthButton'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import HomePage from './pages/Home'
+import DashboardPage from './pages/Dashboard'
+import ProfilePage from './pages/Profile'
+import CallbackPage from './pages/Callback'
+import './App.css'
 
 export default function App() {
   return (
     <BrowserRouter>
       <nav
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "10px 20px",
-          borderBottom: "1px solid #ccc",
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '10px 20px',
+          borderBottom: '1px solid #ccc',
         }}
       >
         <h1 style={{ margin: 0 }}>🔐 OAuth Full-Stack Demo</h1>
@@ -47,5 +46,5 @@ export default function App() {
         />
       </Routes>
     </BrowserRouter>
-  );
+  )
 }

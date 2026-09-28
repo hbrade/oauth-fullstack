@@ -1,24 +1,25 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth0 } from '@auth0/auth0-react'
 
 export default function CallbackPage() {
-  const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useAuth0();
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAuth0()
+  const hasRun = useRef(false)
 
   useEffect(() => {
-    if (isAuthenticated && !isLoading) {
-      // Warte kurz dann navigate (KEIN Page Reload!)
-      setTimeout(() => {
-        navigate("/dashboard"); // window.location.href macht page reload und damit ein logout
-      }, 500);
+    if (hasRun.current) return
+
+    if (isAuthenticated) {
+      hasRun.current = true
+      console.log('✅ [CALLBACK] Authentifizierung erfolgreich')
+      navigate('/dashboard', { replace: true })
     }
-  }, [isAuthenticated, isLoading, navigate]);
+  }, [isAuthenticated, navigate])
 
   return (
-    <div style={{ padding: "20px", textAlign: "center" }}>
+    <div style={{ padding: '40px', textAlign: 'center' }}>
       <h1>🔄 Authentifizierung läuft...</h1>
-      <p>Backend tauscht Code gegen Token...</p>
     </div>
-  );
+  )
 }
