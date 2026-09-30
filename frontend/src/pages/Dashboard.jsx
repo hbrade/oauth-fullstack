@@ -43,6 +43,26 @@ export default function Dashboard() {
     }
   }
 
+  const forceRefresh = async () => {
+    setApiResult(null)
+    setApiError(null)
+    try {
+      console.log('🔄 [REFRESH] Force Refresh gestartet')
+      const token = await getAccessTokenSilently({ cacheMode: 'off' })
+      console.log(
+        '✅ [REFRESH] Neuer Access Token:',
+        token.substring(0, 30) + '...'
+      )
+      setApiResult({
+        refresh: 'erfolgreich',
+        token: token.substring(0, 30) + '...',
+      })
+    } catch (error) {
+      console.error('❌ [REFRESH] Error:', error)
+      setApiError('Refresh fehlgeschlagen: ' + (error.error || error.message))
+    }
+  }
+
   return (
     <div style={{ padding: '20px' }}>
       <h1>Dashboard</h1>
@@ -56,6 +76,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
         <button onClick={callProtectedApi}>🔐 API mit Token aufrufen</button>
         <button onClick={callWithoutToken}>🚫 API ohne Token aufrufen</button>
+        <button onClick={forceRefresh}>🔄 Force Token Refresh</button>
       </div>
 
       {apiResult && (
