@@ -63,6 +63,26 @@ export default function Dashboard() {
     }
   }
 
+  const callEndpoint = async (path) => {
+    setApiResult(null)
+    setApiError(null)
+    try {
+      const token = await getAccessTokenSilently()
+      console.log(`📤 [API] GET ${path}`)
+      const response = await axios.get(`${API_URL}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      console.log(`✅ [API] ${path}:`, response.data)
+      setApiResult(response.data)
+    } catch (error) {
+      const status = error.response?.status
+      console.error(`❌ [API] ${path}: ${status}`, error.response?.data)
+      setApiError(
+        `${path} → ${status} ${JSON.stringify(error.response?.data || '')}`
+      )
+    }
+  }
+
   return (
     <div style={{ padding: '20px' }}>
       <h1>Dashboard</h1>
@@ -77,6 +97,12 @@ export default function Dashboard() {
         <button onClick={callProtectedApi}>🔐 API mit Token aufrufen</button>
         <button onClick={callWithoutToken}>🚫 API ohne Token aufrufen</button>
         <button onClick={forceRefresh}>🔄 Force Token Refresh</button>
+        <button onClick={() => callEndpoint('/api/messages')}>
+          📨 Messages (read:messages)
+        </button>
+        <button onClick={() => callEndpoint('/api/admin')}>
+          🛡️ Admin (admin:access)
+        </button>
       </div>
 
       {apiResult && (

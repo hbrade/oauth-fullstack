@@ -22,6 +22,19 @@ const checkJwt = auth({
   issuerBaseURL: `https://${process.env.AUTH0_DOMAIN}`,
 })
 
+const requirePermission = (permission) => (req, res, next) => {
+  const permissions = req.auth?.payload?.permissions || []
+
+  if (!permissions.includes(permission)) {
+    console.log(`🚫 [AUTHZ] ${req.auth?.payload?.sub} fehlt: ${permission}`)
+    return res.status(403).json({
+      error: 'insufficient_permission',
+      required: permission,
+    })
+  }
+  next()
+}
+
 // ============================================
 // ROUTE 2: User Info (geschützt mit JWT Validierung)
 // ============================================
@@ -42,6 +55,35 @@ app.get('/api/user', checkJwt, (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend läuft auf Port ' + PORT })
 })
+
+// ============================================
+// ROUTE: Messages (braucht read:messages)
+// ============================================
+app.get(
+  '/api/messages',
+  checkJwt,
+  requirePermission('read:messages'),
+  (req, res) => {
+    console.log('✅ [MESSAGES] Zugriff erlaubt für', req.auth.payload.sub)
+    res.json({
+      messages: ['Nachricht 1', 'Nachricht 2'],
+      permissions: req.auth.payload.permissions,
+    })
+  }
+)
+
+// ============================================
+// ROUTE: Admin (braucht admin:access)
+// ============================================
+app.get(
+  '/api/admin',
+  checkJwt,
+  requirePermission('admin:access'),
+  (req, res) => {
+    console.log('✅ [ADMIN] Zugriff erlaubt für', req.auth.payload.sub)
+    res.json({ message: 'Willkommen im Admin-Bereich' })
+  }
+)
 
 // Server starten
 app.listen(PORT, () => {
