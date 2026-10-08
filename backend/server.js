@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { auth } from 'express-oauth2-jwt-bearer'
+import helmet from 'helmet'
 
 dotenv.config()
 
@@ -10,6 +11,21 @@ const PORT = process.env.PORT || 3001
 
 // Middleware
 app.use(express.json())
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      // <- CSP
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        connectSrc: ["'self'", process.env.FRONTEND_URL], // explizit erlaubte fetch/XHR-Ziele
+        frameAncestors: ["'none'"], // niemand darf iframen (strenger)
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+      },
+    },
+  })
+)
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
