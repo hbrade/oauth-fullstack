@@ -2,12 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta content="
+      default-src 'self';
+      script-src 'self';
+      style-src 'self' 'unsafe-inline';
+      connect-src 'self' http://localhost:3001 https://*.auth0.com https://dev-lmacc8x3b0jzx2mb.us.auth0.com;
+      img-src 'self' data: https://*.githubusercontent.com https://*.gravatar.com https://s.gravatar.com https://lh3.googleusercontent.com;
+      frame-ancestors 'none'
+    "
+        http-equiv="Content-Security-Policy"
+    />
+    <link href="/favicon.svg" rel="icon" type="image/svg+xml" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>frontend</title>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script src="/src/main.jsx" type="module"></script>
   </body>
 </html>

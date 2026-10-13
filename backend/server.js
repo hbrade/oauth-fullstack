@@ -101,6 +101,13 @@ app.get(
   }
 )
 
+app.get(
+  '/api/test403',
+  checkJwt,
+  requirePermission('does:not-exist'),
+  (req, res) => res.json({ ok: true })
+)
+
 // Server starten
 app.listen(PORT, () => {
   console.log(`Backend läuft auf http://localhost:${PORT}`)
