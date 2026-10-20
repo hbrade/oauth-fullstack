@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import { auth } from 'express-oauth2-jwt-bearer'
 import helmet from 'helmet'
 import rateLimit from 'express-rate-limit'
+import { z } from 'zod'
 
 dotenv.config()
 
@@ -74,6 +75,31 @@ const requirePermission = (permission) => (req, res, next) => {
   next()
 }
 
+// Schema: erwartetes Eingabeformat (Allowlist)
+const createItemSchema = z.object({
+  name: z.string().min(1).max(100),
+  quantity: z.number().int().positive().max(10000),
+  category: z.enum(['food', 'medicine', 'other']),
+})
+
+// Validierungs-Middleware
+function validate(schema) {
+  return (req, res, next) => {
+    const result = schema.safeParse(req.body)
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Ungültige Eingabe',
+        details: result.error.issues.map((i) => ({
+          field: i.path.join('.'),
+          message: i.message,
+        })),
+      })
+    }
+    req.validatedBody = result.data
+    next()
+  }
+}
+
 // ============================================
 // ROUTE 2: User Info (geschützt mit JWT Validierung)
 // ============================================
@@ -133,6 +159,12 @@ app.get(
 
 app.get('/api/sensitive', strictLimiter, checkJwt, (req, res) => {
   res.json({ data: 'streng limitiert' })
+})
+
+app.post('/api/items', checkJwt, validate(createItemSchema), (req, res) => {
+  const item = req.validatedBody
+  console.log('✅ [ITEMS] validiert:', item)
+  res.status(201).json({ created: item })
 })
 
 // Server starten
