@@ -1,6 +1,6 @@
 # Security Audit — oauth-fullstack
 
-**Datum:** 2026-10-13
+**Datum:** 2026-10-18
 **Scope:** React SPA (:5173) · Node.js/Express API (:3001) · Auth0 (Authorization Server)
 **Methodik:** Manuelle Tests, `curl`, Browser DevTools, Burp (passiv)
 **Prüfer:** Selbst-Audit
@@ -63,6 +63,15 @@ beheben. Ein bewusst akzeptierter Trade-off (Tokens im LocalStorage) ist dokumen
 | Content-Security-Policy | `frame-ancestors 'none'` | gesetzt (Vite Dev Server) |
 | X-Frame-Options | `DENY` | gesetzt |
 
+### Rate Limiting
+
+| Kontrolle | Test | Ergebnis |
+|---|---|---|
+| Globales Limit | 100 Req / 15 min / IP (express-rate-limit) | 429 nach Limit, verifiziert |
+| Strenges Limit | 5 Req / min auf /api/sensitive | 429 ab dem 6. Request |
+| 429-Antwort | curl-Schleife | Retry-After + RateLimit-* gesetzt |
+| Limiter vor Auth | /api/sensitive ohne Token | 401 (gezählt) → 429 (geblockt vor checkJwt) |
+
 ### Clickjacking
 
 | Kontrolle | Test | Ergebnis |
@@ -112,7 +121,8 @@ Zusätzlich: `express` sendet Stacktraces nur, solange `NODE_ENV` nicht auf
   XSS-Token-Diebstahl-Risiko (Trade-off: CSRF-Schutz via SameSite + CSRF-Token nötig).
 - **CSP härten** — `nonce`/`hash` statt `'unsafe-inline'` bei Styles.
 - **Produktions-TLS** — echtes HTTPS, HSTS wirksam, ggf. HSTS-Preload.
-- **Rate Limiting** — Schutz der Auth-/API-Endpoints gegen Brute Force (Woche 4).
+- **Rate Limiting Produktion** — trust proxy korrekt setzen (hinter Reverse Proxy)
+  und Redis-Store statt In-Memory bei mehreren Instanzen.
 
 ---
 

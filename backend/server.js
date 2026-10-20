@@ -3,6 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { auth } from 'express-oauth2-jwt-bearer'
 import helmet from 'helmet'
+import rateLimit from 'express-rate-limit'
 
 dotenv.config()
 
@@ -32,6 +33,28 @@ app.use(
     credentials: true,
   })
 )
+
+// Globales Rate Limit: 100 Requests pro 15 Minuten pro IP
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen, bitte später erneut versuchen.' },
+})
+
+// Strenges Limit: 5 Requests pro Minute pro IP
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Zu viele Versuche. Bitte in einer Minute erneut versuchen.',
+  },
+})
+
+app.use(globalLimiter)
 
 const checkJwt = auth({
   audience: process.env.AUTH0_AUDIENCE,
@@ -107,6 +130,10 @@ app.get(
   requirePermission('does:not-exist'),
   (req, res) => res.json({ ok: true })
 )
+
+app.get('/api/sensitive', strictLimiter, checkJwt, (req, res) => {
+  res.json({ data: 'streng limitiert' })
+})
 
 // Server starten
 app.listen(PORT, () => {
