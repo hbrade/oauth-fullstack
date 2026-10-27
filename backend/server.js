@@ -150,6 +150,7 @@ app.get(
   }
 )
 
+// Smoke test
 app.get(
   '/api/test403',
   checkJwt,
@@ -165,6 +166,24 @@ app.post('/api/items', checkJwt, validate(createItemSchema), (req, res) => {
   const item = req.validatedBody
   console.log('✅ [ITEMS] validiert:', item)
   res.status(201).json({ created: item })
+})
+
+// 404 für unbekannte Routes
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not Found' })
+})
+
+// Zentraler Error-Handler (4 Parameter!)
+app.use((err, req, res, next) => {
+  console.error('❌ [ERROR]', err.stack || err.message)
+
+  const status = err.status || err.statusCode || 500
+  const isDev = process.env.NODE_ENV !== 'production'
+
+  res.status(status).json({
+    error: err.message || 'Internal Server Error',
+    ...(isDev && { stack: err.stack }),
+  })
 })
 
 // Server starten

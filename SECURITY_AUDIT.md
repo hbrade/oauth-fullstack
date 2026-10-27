@@ -87,15 +87,25 @@ beheben. Ein bewusst akzeptierter Trade-off (Tokens im LocalStorage) ist dokumen
 | Exfiltration blockiert | `fetch('https://example.com/…')` aus der Console | durch `connect-src` blockiert |
 | Token-Auslesen | LocalStorage per JS lesbar | durch CSP nicht verhinderbar (siehe Finding 1) |
 
+### Error Handling & Konfiguration
+
+| Kontrolle | Test | Ergebnis |
+|---|---|---|
+| Kein Stacktrace-Leak | ungültiges Token in Produktion (NODE_ENV=production) | nur generische Fehlermeldung, keine Pfade/Stacktrace |
+| Dev-Fehlerdetails | ungültiges Token in Development | Fehler + Stacktrace im JSON (kontrolliert), intern geloggt |
+| 404-Handling | unbekannte Route (/gibtsnicht) | JSON {"error":"Not Found"}, kein HTML-Default |
+| Keine Secrets im Code | git grep nach secret/password/api_key | nichts gefunden |
+| .env ignoriert | .gitignore | backend/.env, frontend/.env.local ausgeschlossen |
+| Credential-Logging | Review der console.log-Zeilen | nur sub/Metadaten, keine Tokens/Passwörter |
 ---
 
 ## Findings
 
-| # | Schwere | Finding | Beschreibung | Status |
-|---|---|---|---|---|
-| 1 | Info | Tokens im LocalStorage | Access-/Refresh-Token liegen im LocalStorage und sind per JavaScript lesbar. CSP senkt das XSS-Risiko, beseitigt es aber nicht. | akzeptierter Trade-off |
-| 2 | Low | Stacktrace in Fehlerantwort | Die API gibt bei Fehlern (z. B. ungültiges Token) einen vollständigen Stacktrace inkl. absoluter Dateipfade und `node_modules`-Struktur an den Client zurück (Information Disclosure). | offen — vor Produktion beheben |
-| 3 | Low | `style-src 'unsafe-inline'` | Inline-Styles der SPA erfordern `'unsafe-inline'` in der `style-src`-Direktive. CSS-Injection-Risiko ist begrenzt, aber nicht null. | akzeptierter Trade-off |
+| # | Schwere | Finding | Beschreibung | Status                                                           |
+|---|---|---|---|------------------------------------------------------------------|
+| 1 | Info | Tokens im LocalStorage | Access-/Refresh-Token liegen im LocalStorage und sind per JavaScript lesbar. CSP senkt das XSS-Risiko, beseitigt es aber nicht. | akzeptierter Trade-off                                           |
+| 2 | Low | Stacktrace in Fehlerantwort | Die API gibt bei Fehlern (z. B. ungültiges Token) einen vollständigen Stacktrace inkl. absoluter Dateipfade und `node_modules`-Struktur an den Client zurück (Information Disclosure). | BEHOBEN (2026-10-27): zentraler Error-Handler, Stacktrace nur in development |
+| 3 | Low | `style-src 'unsafe-inline'` | Inline-Styles der SPA erfordern `'unsafe-inline'` in der `style-src`-Direktive. CSS-Injection-Risiko ist begrenzt, aber nicht null. | akzeptierter Trade-off                                           |
 
 ### Finding 2 — Behebung
 
