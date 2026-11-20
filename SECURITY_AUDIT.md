@@ -1,6 +1,6 @@
 # Security Audit — oauth-fullstack
 
-**Datum:** 2026-10-18
+**Datum:** 2026-11-20
 **Scope:** React SPA (:5173) · Node.js/Express API (:3001) · Auth0 (Authorization Server)
 **Methodik:** Manuelle Tests, `curl`, Browser DevTools, Burp (passiv)
 **Prüfer:** Selbst-Audit
@@ -12,10 +12,13 @@
 Die Anwendung implementiert OAuth 2.0 Authorization Code Flow mit PKCE, Refresh
 Token Rotation und rollenbasierter Autorisierung. Transport- und Browser-seitige
 Härtung erfolgt über `helmet` (Security Header) und eine explizite Content-Security-
-Policy. Alle geprüften Angriffsklassen (CORS-Missbrauch, Clickjacking, Token-
-Fälschung, Privilege Escalation) werden korrekt abgewehrt. Ein Low-Finding
-(Stacktrace in Fehlerantworten) ist offen und für das Produktions-Deployment zu
-beheben. Ein bewusst akzeptierter Trade-off (Tokens im LocalStorage) ist dokumentiert.
+Policy. Die API ist zusätzlich durch Rate Limiting (global + strikt) und
+Eingabevalidierung (`zod`) geschützt; Fehlerantworten geben in Produktion keine
+Stacktraces mehr preis (zentraler Error-Handler + `NODE_ENV=production`). Alle
+geprüften Angriffsklassen (CORS-Missbrauch, Clickjacking, Token-Fälschung,
+Privilege Escalation, Brute Force, Injection) werden korrekt abgewehrt. Es verbleibt
+kein offenes Finding. Ein bewusst akzeptierter Trade-off (Tokens im LocalStorage)
+ist dokumentiert.
 
 ---
 
@@ -63,15 +66,6 @@ beheben. Ein bewusst akzeptierter Trade-off (Tokens im LocalStorage) ist dokumen
 | Content-Security-Policy | `frame-ancestors 'none'` | gesetzt (Vite Dev Server) |
 | X-Frame-Options | `DENY` | gesetzt |
 
-### Rate Limiting
-
-| Kontrolle | Test | Ergebnis |
-|---|---|---|
-| Globales Limit | 100 Req / 15 min / IP (express-rate-limit) | 429 nach Limit, verifiziert |
-| Strenges Limit | 5 Req / min auf /api/sensitive | 429 ab dem 6. Request |
-| 429-Antwort | curl-Schleife | Retry-After + RateLimit-* gesetzt |
-| Limiter vor Auth | /api/sensitive ohne Token | 401 (gezählt) → 429 (geblockt vor checkJwt) |
-
 ### Clickjacking
 
 | Kontrolle | Test | Ergebnis |
@@ -87,30 +81,36 @@ beheben. Ein bewusst akzeptierter Trade-off (Tokens im LocalStorage) ist dokumen
 | Exfiltration blockiert | `fetch('https://example.com/…')` aus der Console | durch `connect-src` blockiert |
 | Token-Auslesen | LocalStorage per JS lesbar | durch CSP nicht verhinderbar (siehe Finding 1) |
 
-### Error Handling & Konfiguration
+### Rate Limiting
 
 | Kontrolle | Test | Ergebnis |
 |---|---|---|
-| Kein Stacktrace-Leak | ungültiges Token in Produktion (NODE_ENV=production) | nur generische Fehlermeldung, keine Pfade/Stacktrace |
-| Dev-Fehlerdetails | ungültiges Token in Development | Fehler + Stacktrace im JSON (kontrolliert), intern geloggt |
-| 404-Handling | unbekannte Route (/gibtsnicht) | JSON {"error":"Not Found"}, kein HTML-Default |
-| Keine Secrets im Code | git grep nach secret/password/api_key | nichts gefunden |
-| .env ignoriert | .gitignore | backend/.env, frontend/.env.local ausgeschlossen |
-| Credential-Logging | Review der console.log-Zeilen | nur sub/Metadaten, keine Tokens/Passwörter |
+| Globales Limit | Schleife von >100 Requests gegen `/api/health` | nach Schwelle `429 Too Many Requests` + `Retry-After` |
+| Striktes Limit (sensibel) | wiederholte Requests gegen strikt limitierten Endpoint | früherer `429` als beim globalen Limit |
+| Proxy-Spoofing bedacht | `trust proxy` nur für bekannte Proxy-Hops gesetzt | kein Zählen nach gefälschtem `X-Forwarded-For` |
+
+### Eingabevalidierung (Injection)
+
+| Kontrolle | Test | Ergebnis |
+|---|---|---|
+| Schema-Validierung | `POST /api/items` mit gültigem Body | `201`, Daten typgeprüft (`zod`) |
+| Fail-fast bei Malformed | leerer `name`, negative `quantity`, unbekannte `category` | `400` mit Feld-Fehlern, keine Verarbeitung |
+| Kein Daten-als-Code | Eingaben nur typgeprüft weiterverwendet, nie interpoliert | bestanden |
+
 ---
 
 ## Findings
 
-| # | Schwere | Finding | Beschreibung | Status                                                           |
-|---|---|---|---|------------------------------------------------------------------|
-| 1 | Info | Tokens im LocalStorage | Access-/Refresh-Token liegen im LocalStorage und sind per JavaScript lesbar. CSP senkt das XSS-Risiko, beseitigt es aber nicht. | akzeptierter Trade-off                                           |
-| 2 | Low | Stacktrace in Fehlerantwort | Die API gibt bei Fehlern (z. B. ungültiges Token) einen vollständigen Stacktrace inkl. absoluter Dateipfade und `node_modules`-Struktur an den Client zurück (Information Disclosure). | BEHOBEN (2026-10-27): zentraler Error-Handler, Stacktrace nur in development |
-| 3 | Low | `style-src 'unsafe-inline'` | Inline-Styles der SPA erfordern `'unsafe-inline'` in der `style-src`-Direktive. CSS-Injection-Risiko ist begrenzt, aber nicht null. | akzeptierter Trade-off                                           |
+| # | Schwere | Finding | Beschreibung | Status |
+|---|---|---|---|---|
+| 1 | Info | Tokens im LocalStorage | Access-/Refresh-Token liegen im LocalStorage und sind per JavaScript lesbar. CSP senkt das XSS-Risiko, beseitigt es aber nicht. | akzeptierter Trade-off |
+| 2 | Low | Stacktrace in Fehlerantwort | Die API gab bei Fehlern (z. B. ungültiges Token) einen vollständigen Stacktrace inkl. absoluter Dateipfade und `node_modules`-Struktur an den Client zurück (Information Disclosure). | behoben — zentraler Error-Handler + `NODE_ENV=production` |
+| 3 | Low | `style-src 'unsafe-inline'` | Inline-Styles der SPA erfordern `'unsafe-inline'` in der `style-src`-Direktive. CSS-Injection-Risiko ist begrenzt, aber nicht null. | akzeptierter Trade-off |
 
-### Finding 2 — Behebung
+### Finding 2 — Behebung (umgesetzt)
 
 ```javascript
-// Produktion: NODE_ENV=production setzen und generischen Error-Handler ergänzen
+// Zentraler Error-Handler: interne Details bleiben intern, nach außen nur generisch
 app.use((err, req, res, next) => {
   console.error(err)                      // intern loggen
   res.status(err.status || 500).json({    // generische Antwort nach außen
@@ -119,20 +119,26 @@ app.use((err, req, res, next) => {
 })
 ```
 
-Zusätzlich: `express` sendet Stacktraces nur, solange `NODE_ENV` nicht auf
-`production` steht. Für das Deployment `NODE_ENV=production` setzen.
+Zusätzlich ist `NODE_ENV=production` gesetzt, sodass `express` keine Stacktraces
+mehr ausliefert. Verifiziert: ein provozierter Fehler liefert nun `{"error":
+"Internal Server Error"}` ohne Pfade oder `node_modules`-Struktur.
 
 ---
 
 ## Offene Punkte / Roadmap
 
-- **Finding 2 beheben** — generischer Error-Handler + `NODE_ENV=production`.
 - **BFF-Variante** — Tokens in httpOnly-Cookie statt LocalStorage; eliminiert das
   XSS-Token-Diebstahl-Risiko (Trade-off: CSRF-Schutz via SameSite + CSRF-Token nötig).
+- **DPoP / sender-constrained Tokens** (RFC 9449) — bindet Tokens an ein Client-Schlüsselpaar.
 - **CSP härten** — `nonce`/`hash` statt `'unsafe-inline'` bei Styles.
-- **Produktions-TLS** — echtes HTTPS, HSTS wirksam, ggf. HSTS-Preload.
-- **Rate Limiting Produktion** — trust proxy korrekt setzen (hinter Reverse Proxy)
-  und Redis-Store statt In-Memory bei mehreren Instanzen.
+- **Produktions-TLS** — echtes HTTPS, HSTS wirksam, ggf. HSTS-Preload; `trust proxy`
+  und gemeinsamer Rate-Limit-Store (Redis) bei mehreren Instanzen.
+
+### Erledigt seit letztem Audit
+
+- **Finding 2 behoben** — zentraler Error-Handler + `NODE_ENV=production`.
+- **Rate Limiting** — global + strikt (`429` + `Retry-After`) gegen Brute Force.
+- **Eingabevalidierung** — `zod`-Schemas (Injection-Schutz, Fail-fast).
 
 ---
 
@@ -164,6 +170,15 @@ curl -i http://localhost:3001/api/user                                          
 # RBAC — 403 bei fehlender Permission
 curl -i http://localhost:3001/api/messages -H "Authorization: Bearer <TOKEN>"   # 200
 curl -i http://localhost:3001/api/test403  -H "Authorization: Bearer <TOKEN>"   # 403
+
+# Rate Limiting — 429 nach Schwelle
+for i in $(seq 1 110); do
+  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api/health
+done | sort | uniq -c                                                           # 200 … dann 429
+
+# Eingabevalidierung — 400 bei Malformed
+curl -i -X POST http://localhost:3001/api/items -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" -d '{"name":"","quantity":-5}'            # 400
 ```
 
 ---
@@ -171,7 +186,9 @@ curl -i http://localhost:3001/api/test403  -H "Authorization: Bearer <TOKEN>"   
 ## Fazit
 
 Die Kern-Sicherheitskontrollen (PKCE, Refresh Rotation, JWT-Validierung, RBAC,
-CORS-Allowlist, Security Header, Clickjacking-Schutz) sind implementiert und durch
-Tests belegt. Es verbleibt ein Low-Finding (Stacktrace-Leak), das vor einem
-Produktions-Deployment zu beheben ist. Die architektonische Haupt-Entscheidung
-(LocalStorage statt BFF) ist bewusst getroffen und mit ihren Grenzen dokumentiert.
+CORS-Allowlist, Security Header, Clickjacking-Schutz, Rate Limiting,
+Eingabevalidierung) sind implementiert und durch Tests belegt. Das zuvor offene
+Low-Finding (Stacktrace-Leak) ist behoben. Es verbleibt kein offenes Finding. Die
+architektonische Haupt-Entscheidung (LocalStorage statt BFF) ist bewusst getroffen
+und mit ihren Grenzen dokumentiert; der BFF-Umbau steht als nächster Schritt auf der
+Roadmap.
