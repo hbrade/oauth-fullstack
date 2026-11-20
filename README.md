@@ -1,19 +1,29 @@
 # oauth-fullstack
 
-A full-stack reference implementation of **OAuth 2.0 Authorization Code Flow with PKCE**, **refresh token rotation** and **role-based access control** for a single-page application and a protected Node.js API.
+A full-stack reference implementation of **OAuth 2.0 Authorization Code Flow with PKCE**, **refresh token rotation** and **role-based access control** for a single-page application and a protected Node.js API — hardened with security headers, a strict Content Security Policy, CORS allowlisting, rate limiting, input validation and clickjacking protection.
 
-The project focuses on security mechanics rather than UI: every step of the flow can be observed in the browser (Network tab, Local Storage) and verified against the backend.
+The project focuses on security mechanics rather than UI: every step of the flow can be observed in the browser (Network tab, Local Storage) and verified against the backend. A full [security audit](./SECURITY_AUDIT.md) with tested controls and documented findings is included.
 
 ---
 
 ## Features
 
+### Authentication & Authorization
 - **Authorization Code Flow with PKCE** (S256) for a public SPA client, no client secret in the browser
 - **Refresh tokens** with **rotation** and **reuse detection**
 - **JWT access tokens** issued for a dedicated API audience
 - **Backend JWT validation**: signature (RS256 via JWKS), issuer, audience, expiry
 - **RBAC**: permissions embedded in the access token and enforced per endpoint
 - Clear separation of **401 Unauthorized** (authentication) and **403 Forbidden** (authorization)
+
+### Security Hardening
+- **Security headers** via `helmet` (CSP, HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy); `X-Powered-By` removed
+- **Content Security Policy**: `script-src 'self'` without `unsafe-inline`, `connect-src` allowlist, `frame-ancestors 'none'`
+- **Clickjacking protection**: `frame-ancestors` / `X-Frame-Options` as real HTTP headers (backend and Vite dev server)
+- **Strict CORS**: fixed origin allowlist, no reflection, no `null`, no wildcard
+- **Rate limiting**: global limit plus a stricter limit for sensitive endpoints (429 + `Retry-After`)
+- **Input validation** with `zod` (allowlist schemas, fail-fast on malformed input)
+- **Central error handler**: generic errors in production, stacktraces only in development (no information disclosure)
 
 ---
 
@@ -70,7 +80,7 @@ sequenceDiagram
 | Layer | Technology |
 |---|---|
 | Frontend | React, Vite, React Router, `@auth0/auth0-react` |
-| Backend | Node.js, Express, `express-oauth2-jwt-bearer` |
+| Backend | Node.js, Express, `express-oauth2-jwt-bearer`, `helmet`, `express-rate-limit`, `zod` |
 | Identity Provider | Auth0 (Social login via GitHub, username/password) |
 | Token format | JWT (RS256), JWKS-based key discovery |
 
@@ -87,6 +97,12 @@ sequenceDiagram
 | Expired tokens | `exp` / `nbf` validation |
 | Privilege escalation | RBAC permissions in the JWT, checked per route |
 | Open redirect / code leakage | Exact `redirect_uri` allowlist in the authorization server |
+| Cross-origin data theft | Strict CORS (fixed origin, no reflection / `null` / wildcard) |
+| XSS → token exfiltration | CSP (`script-src 'self'`, `connect-src` allowlist) |
+| Clickjacking | `frame-ancestors 'none'` / `X-Frame-Options` (HTTP header) |
+| Brute force / credential stuffing | Rate limiting (429 + `Retry-After`) |
+| Injection (SQL / command / NoSQL) | Input validation (`zod`) + parameterised/typed usage |
+| Information disclosure | Central error handler, no stacktrace in production |
 
 ### Authentication vs. Authorization
 
@@ -101,10 +117,11 @@ sequenceDiagram
 
 | Method | Endpoint | Protection | Response |
 |---|---|---|---|
-| GET | `/api/health` | none | service status |
+| GET | `/api/health` | none (rate-limited) | service status |
 | GET | `/api/user` | valid JWT | `sub`, `scope` |
 | GET | `/api/messages` | JWT + `read:messages` | sample data |
 | GET | `/api/admin` | JWT + `admin:access` | admin message |
+| POST | `/api/items` | JWT + `zod` validation | created item |
 
 ---
 
@@ -125,10 +142,13 @@ oauth-fullstack/
 │   │       ├── Callback.jsx      # handles the OAuth redirect
 │   │       ├── Dashboard.jsx     # API calls, token refresh
 │   │       └── Profile.jsx
-│   └── .env.local
+│   ├── vite.config.js            # dev-server security headers (frame-ancestors)
+│   └── .env.local                # (git-ignored) — see .env.example
 └── backend/
-    ├── server.js                 # Express app, JWT + permission middleware
-    └── .env
+    ├── server.js                 # Express app: helmet, CORS, rate limit,
+    │                             #   JWT + permission middleware, zod, error handler
+    ├── .env.example              # template for required variables
+    └── .env                      # (git-ignored)
 ```
 
 ---
@@ -168,6 +188,12 @@ oauth-fullstack/
 
 ### 2. Environment variables
 
+Copy the template and fill in your own Auth0 values:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
 `frontend/.env.local`
 ```
 VITE_AUTH0_DOMAIN=<your-tenant>.auth0.com
@@ -182,6 +208,7 @@ AUTH0_DOMAIN=<your-tenant>.auth0.com
 AUTH0_AUDIENCE=https://oauth-fullstack-api
 FRONTEND_URL=http://localhost:5173
 PORT=3001
+NODE_ENV=development
 ```
 
 No client secret is required: the SPA is a public client and relies on PKCE.
@@ -235,10 +262,49 @@ Copy `access_token` from Local Storage (`@@auth0spajs@@::...`) into a JWT decode
 # no token → 401
 curl -i http://localhost:3001/api/admin
 
-# invalid token → 401 with error="invalid_token"
+# invalid token → 401
 curl -i http://localhost:3001/api/admin -H "Authorization: Bearer invalid"
 
-# valid token without admin:access → 403 (use the Dashboard button)
+# valid token without admin:access → 403
+curl -i http://localhost:3001/api/admin -H "Authorization: Bearer <TOKEN>"
+```
+
+### Security headers
+
+```bash
+curl -I http://localhost:3001/api/health
+# → Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options,
+#   X-Frame-Options, Referrer-Policy; no X-Powered-By
+```
+
+### CORS (no origin reflection)
+
+```bash
+curl -I -H "Origin: https://evil.com" http://localhost:3001/api/health
+# → Access-Control-Allow-Origin: http://localhost:5173 (NOT evil.com)
+```
+
+### Rate limiting
+
+```bash
+for i in $(seq 1 110); do
+  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api/health
+done | sort | uniq -c
+# → first requests 200, then 429 (Too Many Requests) with Retry-After
+```
+
+### Input validation (zod)
+
+```bash
+# valid → 201
+curl -i -X POST http://localhost:3001/api/items \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"name":"Milk","quantity":2,"category":"food"}'
+
+# invalid (empty name, negative quantity, unknown category) → 400 with field errors
+curl -i -X POST http://localhost:3001/api/items \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"name":"","quantity":-5,"category":"weapons"}'
 ```
 
 ### Refresh token reuse detection
@@ -257,21 +323,27 @@ Result: `invalid_grant`. A subsequent refresh with RT2 in the app fails as well,
 
 ---
 
+## Security Audit
+
+A full self-audit — tested controls, methodology, and documented findings with severity ratings — is in [SECURITY_AUDIT.md](./SECURITY_AUDIT.md).
+
+---
+
 ## Known Trade-offs
 
-- **Tokens in Local Storage.** `cacheLocation="localstorage"` keeps the session across page reloads but makes tokens readable by JavaScript. The mitigations are refresh token rotation, short access token lifetimes and a strict Content Security Policy against XSS. A backend-for-frontend (BFF) with httpOnly cookies avoids browser token storage entirely.
+- **Tokens in Local Storage.** `cacheLocation="localstorage"` keeps the session across page reloads but makes tokens readable by JavaScript. The mitigations are refresh token rotation, short access token lifetimes and a strict Content Security Policy against XSS. A backend-for-frontend (BFF) with httpOnly cookies avoids browser token storage entirely — see the roadmap.
 - **Bearer tokens.** Any holder of a valid access token can use it until it expires. Sender-constrained tokens (DPoP, RFC 9449) bind tokens to a client key pair.
+- **`style-src 'unsafe-inline'`.** Inline styles require this directive; CSS-injection risk is limited but not zero. A `nonce`/`hash` approach would remove it.
 - **Permission changes are not instant.** Permissions are embedded in the JWT and only change when a new token is issued.
 
 ---
 
 ## Roadmap
 
-- [ ] Security headers with `helmet` (CSP, HSTS, X-Frame-Options, Referrer-Policy)
-- [ ] Strict CORS configuration review
-- [ ] Content Security Policy for the SPA
-- [ ] Backend-for-frontend variant with httpOnly cookies
-- [ ] DPoP (sender-constrained tokens)
+- [ ] Backend-for-frontend (BFF) variant with httpOnly cookies — removes tokens from the browser entirely
+- [ ] DPoP / sender-constrained tokens (RFC 9449)
+- [ ] CSP `nonce`/`hash` instead of `style-src 'unsafe-inline'`
+- [ ] Production deployment with real HTTPS (HSTS effective), `trust proxy`, and a shared rate-limit store (Redis)
 
 ---
 
@@ -283,7 +355,8 @@ Result: `invalid_grant`. A subsequent refresh with RT2 in the app fails as well,
 - [RFC 9449 – DPoP](https://datatracker.ietf.org/doc/html/rfc9449)
 - [OAuth 2.0 for Browser-Based Apps (IETF draft)](https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/)
 - [Auth0 – Authorization Code Flow with PKCE](https://auth0.com/docs/get-started/authentication-and-authorization-flow/authorization-code-flow-with-pkce)
-- [PortSwigger Web Security Academy – OAuth](https://portswigger.net/web-security/oauth)
+- [OWASP Top 10](https://owasp.org/Top10/)
+- [PortSwigger Web Security Academy](https://portswigger.net/web-security)
 
 ---
 
